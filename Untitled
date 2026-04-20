@@ -1,0 +1,9 @@
+crt-weekly-scanner/
+├── README.md               ← download above
+├── crt_scanner.py          ← download above  
+├── requirements.txt        ← download above
+├── .gitignore              ← create manually (contents below)
+└── tickers/
+    ├── sp500.txt           ← download above
+    ├── nasdaq100.txt       ← download above
+    └── custom.txt          ← download above
