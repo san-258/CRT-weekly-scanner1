@@ -42,7 +42,7 @@ jobs:
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }} # Use an App Password, not your login password
         subject: "Weekly Market Scan Results - Friday"
-        to: email1@example.com, email2@example.com
+        to: stocks.scanner0@gmail.com
         from: GitHub Market Scanner
         body: "The weekly scan has completed successfully. Please check your outputs."
         # If your script saves results to a file (like scan_results.csv), you can attach it:
