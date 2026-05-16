@@ -46,4 +46,4 @@ jobs:
         from: GitHub Market Scanner
         body: "The weekly scan has completed successfully. Please check your outputs."
         # If your script saves results to a file (like scan_results.csv), you can attach it:
-        # attachments: scan_results.csv
+         attachments: scan_results.csv
