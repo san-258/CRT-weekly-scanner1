@@ -40,4 +40,4 @@ jobs:
         to: stocks.scanner0@gmail.com # Make sure your real email address is here
         from: GitHub Market Scanner
         # This will read the text file directly and cleanly drop it into the email body
-        html_body: file://scan_report.txt
+        body: file://scan_report.txt
