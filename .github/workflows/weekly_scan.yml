@@ -27,7 +27,7 @@ jobs:
     - name: Run Scanner Script
       run: |
         # Run the script and save the full terminal output to a temporary file called scan_report.txt
-        python Untitled > scan_report.txt
+        python WeeklyCRT.py > scan_report.txt
 
     - name: Send Email Notification
       uses: dawidd6/action-send-mail@v3
