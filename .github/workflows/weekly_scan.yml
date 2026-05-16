@@ -17,33 +17,33 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Adjust if your script requires a specific version
+        python-version: '3.10'
 
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
         if [ -f Requirements ]; then pip install -r Requirements; fi
-        # If your dependencies file is named 'Requirements.txt', change the line above to match
 
     - name: Run Scanner Script
-      env:
-        # If your script requires API keys (like Alpaca, Interactive Brokers, etc.), 
-        # you will reference them here from GitHub Secrets
-        API_KEY: ${{ secrets.MY_API_KEY }} 
+      id: run_script
       run: |
-        # REPLACE 'Untitled' WITH THE ACTUAL NAME OF YOUR SCRIPT FILE
-        python WeeklyCRT.py
+        # Run the script and pipe the console text directly into a GitHub environment variable
+        echo "SCAN_OUTPUT<<EOF" >> $GITHUB_ENV
+        python Untitled >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
 
     - name: Send Email Notification
       uses: dawidd6/action-send-mail@v3
       with:
-        server_address: smtp.gmail.com # Change if not using Gmail
+        server_address: smtp.gmail.com
         server_port: 465
         username: ${{ secrets.MAIL_USERNAME }}
-        password: ${{ secrets.MAIL_PASSWORD }} # Use an App Password, not your login password
+        password: ${{ secrets.MAIL_PASSWORD }}
         subject: "Weekly Market Scan Results - Friday"
-        to: stocks.scanner0@gmail.com
+        to: stocks.scanner0@gmail.com # Ensure your real email address is here
         from: GitHub Market Scanner
-        body: "The weekly scan has completed successfully. Please check your outputs."
-        # If your script saves results to a file (like scan_results.csv), you can attach it:
-        attachments: scan_results.csv
+        body: |
+          The weekly Candle Range Theory (CRT) scan has completed successfully.
+          
+          See the full report details below:
+             ${{ env.SCAN_OUTPUT }}
