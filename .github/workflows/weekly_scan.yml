@@ -1,0 +1,49 @@
+name: Weekly Market Scan
+
+on:
+  schedule:
+    # Runs every Friday at 23:00 UTC (7:00 PM EDT)
+    - cron: '0 23 * * 5'
+  workflow_dispatch: # Allows you to manually click a button to run it anytime
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-python: '3.10' # Adjust if your script requires a specific version
+
+    - name: Install Dependencies
+      run: |
+        python -m pip upgrade pip
+        if [ -f Requirements ]; then pip install -r Requirements; fi
+        # If your dependencies file is named 'Requirements.txt', change the line above to match
+
+    - name: Run Scanner Script
+      env:
+        # If your script requires API keys (like Alpaca, Interactive Brokers, etc.), 
+        # you will reference them here from GitHub Secrets
+        API_KEY: ${{ secrets.MY_API_KEY }} 
+      run: |
+        # REPLACE 'Untitled' WITH THE ACTUAL NAME OF YOUR SCRIPT FILE
+        python Untitled 
+
+    - name: Send Email Notification
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com # Change if not using Gmail
+        server_port: 465
+        username: ${{ secrets.MAIL_USERNAME }}
+        password: ${{ secrets.MAIL_PASSWORD }} # Use an App Password, not your login password
+        subject: "Weekly Market Scan Results - Friday"
+        to: email1@example.com, email2@example.com
+        from: GitHub Market Scanner
+        body: "The weekly scan has completed successfully. Please check your outputs."
+        # If your script saves results to a file (like scan_results.csv), you can attach it:
+        # attachments: scan_results.csv
