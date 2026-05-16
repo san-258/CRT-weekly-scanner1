@@ -25,12 +25,9 @@ jobs:
         if [ -f Requirements ]; then pip install -r Requirements; fi
 
     - name: Run Scanner Script
-      id: run_script
       run: |
-        # Run the script and pipe the console text directly into a GitHub environment variable
-        echo "SCAN_OUTPUT<<EOF" >> $GITHUB_ENV
-        python Untitled >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
+        # Run the script and save the full terminal output to a temporary file called scan_report.txt
+        python Untitled > scan_report.txt
 
     - name: Send Email Notification
       uses: dawidd6/action-send-mail@v3
@@ -40,10 +37,7 @@ jobs:
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }}
         subject: "Weekly Market Scan Results - Friday"
-        to: stocks.scanner0@gmail.com # Ensure your real email address is here
+        to: stocks.scanner0@gmail.com # Make sure your real email address is here
         from: GitHub Market Scanner
-        body: |
-          The weekly Candle Range Theory (CRT) scan has completed successfully.
-          
-          See the full report details below:
-             ${{ env.SCAN_OUTPUT }}
+        # This will read the text file directly and cleanly drop it into the email body
+        html_body: file://scan_report.txt
