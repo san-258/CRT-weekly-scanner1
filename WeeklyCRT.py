@@ -61,12 +61,27 @@ except ImportError:
 # 0. CONFIG — Edit these settings
 # ════════════════════════════════════════════════════════════════
 
-# Default ticker list (used when no --file or --tickers argument given)
-TICKERS = [
-    "AMAT", "NVDA", "AAPL", "MSFT", "AMD",
-    "TSM",  "ASML", "QCOM", "MU",   "INTC",
-    "GOOGL","META", "AMZN", "AVGO", "ARM"
-]
+# File path for the S&P 500 components list
+COMPONENT_FILE = "Major S&P 500 components by sector"
+
+TICKERS = []
+
+# Dynamically parse the file if it exists at the root level
+if os.path.exists(COMPONENT_FILE):
+    with open(COMPONENT_FILE, "r") as f:
+        for line in f:
+            cleaned = line.strip()
+            # Ignore empty spaces and comments blocking out the sectors
+            if not cleaned or cleaned.startswith("#"):
+                continue
+            TICKERS.append(cleaned.upper())
+else:
+    # Safe fallback list just in case the file goes missing
+    TICKERS = [
+        "AMAT", "NVDA", "AAPL", "MSFT", "AMD",
+        "TSM",  "ASML", "QCOM", "MU",   "INTC",
+        "GOOGL","META", "AMZN", "AVGO", "ARM"
+    ]
 
 # ── CRT Quality Filters ───────────────────────────────────────
 SWEEP_MIN_PCT         = 0.003   # Min sweep = 0.3% beyond mother extreme
