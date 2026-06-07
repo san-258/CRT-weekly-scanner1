@@ -61,27 +61,12 @@ except ImportError:
 # 0. CONFIG — Edit these settings
 # ════════════════════════════════════════════════════════════════
 
-# File path for the S&P 500 components list
-COMPONENT_FILE = "Major S&P 500 components by sector"
-
-TICKERS = []
-
-# Dynamically parse the file if it exists at the root level
-if os.path.exists(COMPONENT_FILE):
-    with open(COMPONENT_FILE, "r") as f:
-        for line in f:
-            cleaned = line.strip()
-            # Ignore empty spaces and comments blocking out the sectors
-            if not cleaned or cleaned.startswith("#"):
-                continue
-            TICKERS.append(cleaned.upper())
-else:
-    # Safe fallback list just in case the file goes missing
-    TICKERS = [
-        "AMAT", "NVDA", "AAPL", "MSFT", "AMD",
-        "TSM",  "ASML", "QCOM", "MU",   "INTC",
-        "GOOGL","META", "AMZN", "AVGO", "ARM"
-    ]
+# Default ticker list (used when no --file or --tickers argument given)
+TICKERS = [
+    "AMAT", "NVDA", "AAPL", "MSFT", "AMD",
+    "TSM",  "ASML", "QCOM", "MU",   "INTC",
+    "GOOGL","META", "AMZN", "AVGO", "ARM"
+]
 
 # ── CRT Quality Filters ───────────────────────────────────────
 SWEEP_MIN_PCT         = 0.003   # Min sweep = 0.3% beyond mother extreme
@@ -103,6 +88,25 @@ DOJI_SCORE_PENALTY    = 2       # Points deducted for doji mother candle
 #   Bearish CRT + Green (bullish) mother = trapped buyers = ideal
 # Same-direction mother = weaker liquidity pool
 DIRECTION_MISMATCH_PENALTY = 1  # Points deducted for same-direction mother
+
+# ── Room to Target Filters ────────────────────────────────────
+# The "already delivered" problem:
+# If child candle already tapped the target side during the sweep week,
+# the CRT has delivered — there's nothing left to trade.
+#
+# Example: Bullish CRT — child sweeps BELOW mother low (good),
+#          but child HIGH also touched the mother HIGH (bad — target reached)
+#          → No room left → Hard disqualify
+#
+# Minimum buffer: child high must be at least 0.5% BELOW mother high (bull)
+#                 child low must be at least 0.5% ABOVE mother low (bear)
+CHILD_TARGET_BUFFER_PCT = 0.005   # 0.5% — child must not have tapped target
+
+# Minimum remaining room from current price to target
+# Below 1.5% = R:R destroyed even with perfect 1H entry
+# Between 1.5-3.0% = tight but tradeable with penalty
+MIN_ROOM_TO_TARGET_PCT  = 0.015   # <1.5% = tight room penalty applied
+TIGHT_ROOM_PENALTY      = 2       # pts deducted when room 1.5-3.0%
 
 # ── Lookback & Volume ─────────────────────────────────────────
 LOOKBACK_WEEKS        = 12      # How many prior weeks to scan for completed CRTs
@@ -272,7 +276,31 @@ def scan_developing_crt(ticker, weekly, daily, hourly):
 
         sweep_extreme = curr_low if direction == "Bullish" else curr_high
 
-        # ── STAGE 1: Sweep Phase ─────────────────────────────────
+        # ── ROOM TO TARGET CHECK ─────────────────────────────────
+        # Problem: child candle sometimes sweeps the low AND rallies
+        # to the target high within the SAME week — CRT already delivered.
+        # If child already tapped the target, there is nothing left to trade.
+        #
+        # Also check current price distance — if already too close to target,
+        # R:R is too tight for a meaningful entry.
+        if direction == "Bullish":
+            # How far is child high from mother high?
+            child_buffer      = (m_high - curr_high) / m_high
+            room_to_target    = (m_high - latest_price) / latest_price
+        else:
+            # How far is child low from mother low?
+            child_buffer      = (curr_low - m_low) / m_low
+            room_to_target    = (latest_price - m_low) / latest_price
+
+        # Hard disqualify — child already tapped the target during sweep week
+        # The CRT has delivered internally — no trade left
+        if child_buffer < CHILD_TARGET_BUFFER_PCT:
+            continue   # skip — "already delivered" setup
+
+        # Soft penalty — current price too close to target
+        # Still show it so trader is aware, but penalise the score
+        tight_room = room_to_target < MIN_ROOM_TO_TARGET_PCT
+        tight_room_penalty = TIGHT_ROOM_PENALTY if tight_room else 0
         s1_swept        = True
         s1_sweep_pct_ok = sweep_pct <= 0.02   # <2% sweep = cleaner grab
         s1_vol_elevated = curr_vol_avg > (m_vol / 5) * VOL_ELEVATED_RATIO
@@ -352,7 +380,9 @@ def scan_developing_crt(ticker, weekly, daily, hourly):
 
         # ── Final Score ───────────────────────────────────────────
         raw_score   = stage1_score + stage2_score + stage3_score
-        total_score = max(raw_score - direction_penalty - doji_penalty, 0)
+        total_score = max(raw_score - direction_penalty
+                                    - doji_penalty
+                                    - tight_room_penalty, 0)
         total_max   = stage1_max + stage2_max + stage3_max
         score_pct   = total_score / total_max * 100
 
@@ -377,6 +407,9 @@ def scan_developing_crt(ticker, weekly, daily, hourly):
             "mother_aligned"     : mother_aligned,
             "direction_penalty"  : direction_penalty,
             "doji_penalty"       : doji_penalty,
+            "tight_room_penalty" : tight_room_penalty,
+            "room_to_target_pct" : round(room_to_target * 100, 2),
+            "child_buffer_pct"   : round(child_buffer * 100, 2),
             "mother_quality"     : mother_quality,
             "m_high"             : round(m_high, 2),
             "m_low"              : round(m_low, 2),
@@ -537,8 +570,9 @@ def print_developing(r):
     doji_icon  = f"⚠️ DOJI (-{r['doji_penalty']}pts)" if r["m_is_doji"] else "✅ Strong body"
 
     penalties = []
-    if r["direction_penalty"]: penalties.append(f"dir-{r['direction_penalty']}")
-    if r["doji_penalty"]:      penalties.append(f"doji-{r['doji_penalty']}")
+    if r["direction_penalty"]:   penalties.append(f"dir-{r['direction_penalty']}")
+    if r["doji_penalty"]:        penalties.append(f"doji-{r['doji_penalty']}")
+    if r["tight_room_penalty"]:  penalties.append(f"room-{r['tight_room_penalty']}")
     penalty_str = f"  [{', '.join(penalties)}]" if penalties else ""
 
     print(f"\n{'═'*60}")
@@ -551,9 +585,13 @@ def print_developing(r):
     print(f"{'─'*60}")
     print(f"  Mother:  Low {r['m_low']}  |  Mid {r['m_mid']}  |  High {r['m_high']}")
     print(f"  Current: {r['current_price']}  |  Sweep to: {r['sweep_extreme']} ({r['sweep_pct']}%)")
-    print(f"  Target:  {r['target']}  |  "
-          f"Dist: {abs(r['target']-r['current_price']):.2f} "
-          f"({abs(r['target']-r['current_price'])/r['current_price']*100:.1f}%)")
+    room_pct   = r["room_to_target_pct"]
+    room_icon  = ("✅" if room_pct >= 3.0
+                  else "⚠️ TIGHT" if room_pct >= 1.5
+                  else "❌ NO ROOM")
+    print(f"  Target : {r['target']}  |  "
+          f"Room: {room_icon} {room_pct:.1f}%  |  "
+          f"Child buffer: {r['child_buffer_pct']:.1f}%")
     print(f"{'─'*60}")
 
     # Stage 1
@@ -634,9 +672,10 @@ def print_summary_table(all_developing):
             "✅" if r["mother_aligned"] else "⚠️",
             "✅" if r["s3_above_mid"] else "❌",
             "✅" if r["s2_choch"] else "❌",
+            f"{r['room_to_target_pct']:.1f}%",
         ])
     headers = ["Ticker","Dir","Stage","S1","S2","S3",
-               "Total","Score%","Sweep%","Body%","Align","vsMid","CHOCH"]
+               "Total","Score%","Sweep%","Body%","Align","vsMid","CHOCH","Room%"]
     if HAS_TABULATE:
         print(tabulate(rows, headers=headers, tablefmt="simple"))
     else:
@@ -656,11 +695,19 @@ def print_legend():
     print(f"  HARD DISQUALIFIED (never shown):")
     print(f"    ✗ Mother range outside 2-6%")
     print(f"    ✗ Sweep outside 0.3-4%")
+    print(f"    ✗ Child already tapped target side (<0.5% buffer)")
+    print(f"      → CRT delivered inside child week — no trade left")
     print(f"")
-    print(f"  SOFT PENALTIES (shown with deductions):")
-    print(f"    ⚠️  Doji/near-doji mother (<15% body)    = -2pts")
-    print(f"    ⚠️  Same-direction mother candle         = -1pt")
+    print(f"  SOFT PENALTIES (shown with score deductions):")
+    print(f"    ⚠️  Doji/near-doji mother (<15% body)    = -2pts  [doji-2]")
+    print(f"    ⚠️  Same-direction mother candle         = -1pt   [dir-1]")
+    print(f"    ⚠️  Room to target < 1.5%               = -2pts  [room-2]")
     print(f"    → Ideal: Bullish CRT + Red mother | Bearish CRT + Green mother")
+    print(f"")
+    print(f"  ROOM TO TARGET:")
+    print(f"    ✅ ≥3.0%  = Plenty of room — full position")
+    print(f"    ⚠️  1.5-3% = Tight — consider reduced size")
+    print(f"    ❌ <1.5%  = No room — penalty applied")
     print(f"")
     print(f"  {Fore.GREEN}Score ≥75%  = 🔥 High Conviction — actionable{Style.RESET_ALL}")
     print(f"  {Fore.YELLOW}Score 50-74% = ⚡ Developing — watch list{Style.RESET_ALL}")
